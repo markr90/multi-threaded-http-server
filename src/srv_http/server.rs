@@ -42,33 +42,18 @@ impl HttpServer {
     }
 
 
-    fn handle_connection(&self, mut stream: net::TcpStream) -> io::Result<()> {
-        let (mut stream, request) = decode(stream)?;
-    
-        let header = http_request.first().ok_or(io::Error::new(io::ErrorKind::ConnectionRefused, "Hello"))?;
-    
-        let mut request_line_items = header.split_whitespace();
-        let method = request_line_items.next()?;
-        let target = request_line_items.next()?;
-        let version = request_line_items.next()?;
-    
-        let request = HttpRequest { 
-            method: parse_http_method(method).map_err(|err| io::Error::new(io::ErrorKind::ConnectionRefused, err))?, 
-            target: String::from(target), 
-            version: parse_http_version(version).map_err(|err| io::Error::new(io::ErrorKind::ConnectionRefused, err))?, 
+    fn handle_connection(&self, mut stream: net::TcpStream) -> io::Result<()> {        
+        let response = match decode(&mut stream) {
+            Ok(request) => {
+                println!("Request: {}", request);
+                HttpResponse::new(StatusCode::OK)
+            },
+            Err(err) => {
+                println!("Error: {:#?}", err);
+                HttpResponse::new(StatusCode::BAD_REQUEST)
+            },
         };
-    
-        let response = HttpResponse::new(StatusCode::OK);
-        //  match parse_tcp_stream(stream) {
-        //     Ok(request) => {
-        //         println!("Request: {}", request);
-        //         HttpResponse::new(StatusCode::OK)
-        //     },
-        //     Err(err) => {
-        //         println!("Error: {:#?}", err);
-        //         HttpResponse::new(StatusCode::BAD_REQUEST)
-        //     },
-        // };
+
         stream.write_all(response.build().as_bytes())
     }
 }
