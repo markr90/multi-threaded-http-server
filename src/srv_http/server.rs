@@ -1,10 +1,13 @@
 use std::io;
+use std::thread;
+use std::time::Duration;
 use std::io::prelude::*;
 use std::net;
 use http::StatusCode;
 
+use super::request::http_request::HttpRequest;
 use super::{
-    request::http_request::decode,
+    request::http_request::read_http_request,
     response::response::HttpResponse
 };
 
@@ -16,6 +19,33 @@ use super::{
 
 pub struct HttpServer {
     listeners: Vec<net::TcpListener>
+}
+
+fn handle_connection(mut stream: net::TcpStream) -> io::Result<()> {        
+    let response = match read_http_request(&mut stream) {
+        Ok(request) => {                
+            println!("Request: {}", request);
+            process_request(&request)
+        },
+        Err(err) => {
+            println!("Error: {:#?}", err);
+            HttpResponse::new(StatusCode::BAD_REQUEST)
+        },
+    };
+
+    stream.write_all(response.build().as_bytes())
+}
+
+
+fn process_request(request: &HttpRequest) -> HttpResponse {
+    match &request.target[..] {
+        "/" => HttpResponse::new(StatusCode::OK),
+        "/sleep" => {
+            thread::sleep(Duration::from_secs(5));
+            HttpResponse::new(StatusCode::OK)
+        }
+        _ => HttpResponse::new(StatusCode::NOT_FOUND)
+    }
 }
 
 impl HttpServer {
@@ -32,28 +62,20 @@ impl HttpServer {
         self
     }
 
-    pub fn run(self) {
+    pub fn run<'a>(&'a self) {
         for listener in &self.listeners {
             for stream in listener.incoming() {
-                let stream = stream.unwrap();
-                self.handle_connection(stream).unwrap();
+                match stream {
+                    Ok(s) => self.send_stream_to_worker(s),
+                    Err(err) => println!("Stream IO Failure: {}", err)
+                }
             }
         }
     }
 
-
-    fn handle_connection(&self, mut stream: net::TcpStream) -> io::Result<()> {        
-        let response = match decode(&mut stream) {
-            Ok(request) => {
-                println!("Request: {}", request);
-                HttpResponse::new(StatusCode::OK)
-            },
-            Err(err) => {
-                println!("Error: {:#?}", err);
-                HttpResponse::new(StatusCode::BAD_REQUEST)
-            },
-        };
-
-        stream.write_all(response.build().as_bytes())
+    fn send_stream_to_worker<'a>(&'a self, stream: net::TcpStream) -> () {
+        thread::spawn(|| { 
+            handle_connection(stream).unwrap(); 
+        });
     }
 }
