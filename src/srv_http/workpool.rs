@@ -13,7 +13,6 @@ struct Worker {
     thread: Option<thread::JoinHandle<()>>,
 }
 
-
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
 impl Worker {

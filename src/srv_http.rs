@@ -1,4 +1,6 @@
 pub mod server;
-mod request;
-mod response;
-mod workpool;
+pub mod server_builder;
+pub mod request;
+pub mod response;
+pub mod workpool;
+pub mod service;
