@@ -29,6 +29,7 @@ impl fmt::Display for ParseError {
 }
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub enum HttpMethod {
     GET,
     POST,
@@ -54,7 +55,7 @@ pub enum HttpVersion {
 }
 
 impl fmt::Display for HttpVersion {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {        
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match &self {
             HttpVersion::Http10 => "HTTP/1.0",
             HttpVersion::Http11 => "HTTP/1.1",
@@ -100,7 +101,7 @@ fn parse_http_version(version: &str) -> Result<HttpVersion, ParseError> {
 }
 
 pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, ParseError> {
-    let mut buf_reader = io::BufReader::new(stream); 
+    let mut buf_reader = io::BufReader::new(stream);
 
     let mut request_line = String::new();
     buf_reader.read_line(&mut request_line).map_err(|_| ParseError::RequestLine)?;
@@ -134,16 +135,16 @@ pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, Par
 
         headers.push((header_name, header_value));
     }
-    
-    // read_body    
+
+    // read_body
     let mut body = vec![0; content_length];
     if content_length > 0 {
         buf_reader.read_exact(&mut body).map_err(|_| ParseError::Body)?;
     }
 
-    let request = HttpRequest { 
-        method: parse_http_method(method)?, 
-        target: String::from(path), 
+    let request = HttpRequest {
+        method: parse_http_method(method)?,
+        target: String::from(path),
         version: parse_http_version(version)?,
         headers: headers,
         body: String::from_utf8(body).map_err(|_| ParseError::Body)?
@@ -225,7 +226,7 @@ pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, Par
 //         headers.push((header_name, header_value));
 //     }
 
-//     // read_body    
+//     // read_body
 
 //     let mut body = vec![0; content_length];
 //     if content_length > 0 {
@@ -234,9 +235,9 @@ pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, Par
 //         println!("here2");
 //     }
 
-//     let request = HttpRequest { 
-//         method: parse_http_method(method)?, 
-//         target: String::from(path), 
+//     let request = HttpRequest {
+//         method: parse_http_method(method)?,
+//         target: String::from(path),
 //         version: parse_http_version(version)?,
 //         body: String::from_utf8(body).map_err(|_| ParseError::Body)?
 //     };

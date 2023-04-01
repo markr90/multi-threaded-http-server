@@ -1,4 +1,4 @@
-use http::{StatusCode};
+use http::StatusCode;
 
 pub struct HttpResponse {
     status_code: StatusCode,
@@ -7,7 +7,7 @@ pub struct HttpResponse {
 impl HttpResponse {
     pub fn new(status_code: StatusCode) -> Self {
         HttpResponse {
-            status_code: status_code
+            status_code
         }
     }
 

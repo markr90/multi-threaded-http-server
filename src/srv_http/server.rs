@@ -1,24 +1,22 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::io::prelude::*;
+use std::io::Write;
 use std::net;
 use http::StatusCode;
-use std::{thread, time};
-use super::request::{read_http_request};
+
+use super::request::read_http_request;
 use super::response::HttpResponse;
-use super::service::{Service, Responder};
+use super::service::Route;
 use super::workpool::WorkerPool;
 
 pub struct HttpServer {
     pub listeners: Vec<net::TcpListener>,
-    // pub services: Arc<Mutex<HashMap<String, Service>>>,
-    pub services: Arc<Mutex<HashMap<String, Box<dyn FnOnce() + Send + 'static>>>>,
+    pub routes: Vec<Route<'static>>,
     pub worker_pool: WorkerPool,
 }
 
 impl HttpServer {
     pub fn run(&self) {
         for listener in &self.listeners {
+            println!("Now listening on {}", listener.local_addr().unwrap());
             for stream in listener.incoming() {
                 match stream {
                     Ok(s) => self.handle_connection(s),
@@ -29,19 +27,24 @@ impl HttpServer {
     }
 
     fn handle_connection(&self, mut stream: net::TcpStream) -> () {
-        let services = Arc::clone(&self.services);
-        self.worker_pool.execute(move || { 
-            let request = read_http_request(&mut stream);
-            let response = match request {
-                Ok(r) => {                    
-                    let services = services.lock().unwrap();
-                    let service = services.get(&r.target).unwrap();
-                    service()
-                },
-                Err(_) => (), // HttpResponse::new(StatusCode::BAD_REQUEST),
-            };
-    
-            // stream.write_all(&response.build().as_bytes()).unwrap()
-        });
+        let request = match read_http_request(&mut stream) {
+            Ok(r) => r,
+            Err(_) => {
+                stream.write_all(HttpResponse::new(StatusCode::BAD_REQUEST).build().as_bytes()).unwrap();
+                return
+            }
+        };
+
+        let found_route = self.routes.iter().find(|&r| r.uri == request.target && r.method == request.method);
+
+        if let Some(route) = found_route {
+            let handler_cloned = route.handler.clone();
+            self.worker_pool.execute(move || {
+                let response = handler_cloned.respond(request);
+                stream.write_all(&response.build().as_bytes()).unwrap()
+            });
+        } else {
+            stream.write_all(HttpResponse::new(StatusCode::NOT_FOUND).build().as_bytes()).unwrap();
+        }
     }
 }

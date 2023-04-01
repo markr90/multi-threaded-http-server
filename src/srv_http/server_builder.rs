@@ -1,15 +1,11 @@
-use http::StatusCode;
-
 use super::{
-    server::HttpServer,
-    service::{Service, Responder}, workpool::WorkerPool, response::HttpResponse
+    server::HttpServer, service::{RouteHandler, Route}, workpool::WorkerPool,
 };
-use std::{net, collections::HashMap, sync::{Arc, Mutex}};
+use std::net;
 
 pub struct HttpServerBuilder {
     bindings: Vec<net::SocketAddr>,
-    //services: HashMap<String, Service>,
-    services: HashMap<String, Box<dyn FnOnce() + Send + 'static>>,
+    routes: Vec<Route<'static>>,
     worker_pool_limit: usize,
 }
 
@@ -17,15 +13,11 @@ pub struct HttpServerBuilder {
 
 const WORKER_POOL_LIMIT_DEFAULT: usize = 16;
 
-async fn test() -> impl Responder {
-    HttpResponse::new(StatusCode::OK)
-}
-
 impl HttpServerBuilder {
     pub fn new() -> Self {
         HttpServerBuilder {
             bindings: Vec::new(),
-            services: HashMap::new(),
+            routes: Vec::new(),
             worker_pool_limit: WORKER_POOL_LIMIT_DEFAULT,
         }
     }
@@ -48,14 +40,8 @@ impl HttpServerBuilder {
         self
     }
 
-    // pub fn add_service(mut self, route: &str, service: Service) -> Self {
-    //     self.services.insert(String::from(route), service);
-    //     self
-    // }
-
-    pub fn add_route<F>(mut self, route: &str, service: F) -> Self
-    where F: FnOnce() + Send + 'static, {
-        self.services.insert(String::from(route), Box::new(service));
+    pub fn add_route(mut self, route: Route<'static>) -> Self {
+        self.routes.push(route);
         self
     }
 
@@ -67,7 +53,7 @@ impl HttpServerBuilder {
 
         HttpServer {
             listeners,
-            services: Arc::new(Mutex::new(self.services)),
+            routes: self.routes,
             worker_pool: WorkerPool::new(self.worker_pool_limit),
         }
     }
