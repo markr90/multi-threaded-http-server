@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Write;
 use std::net;
 use std::sync::Arc;
@@ -7,7 +8,7 @@ use regex::Regex;
 use crate::debug;
 
 use super::http_constants::HttpMethod;
-use super::request::read_http_request;
+use super::request::{read_http_request, ParseError};
 use super::response::HttpResponse;
 use super::service::{Route, RouteHandler};
 use super::workpool::WorkerPool;
@@ -21,11 +22,12 @@ pub struct HttpServer {
 pub struct RouteAddress {
     pub uri_template: String,
     pub uri_regex: regex::Regex,
+    pub uri_params: Vec<String>,
 }
 
 impl RouteAddress {
     pub fn new(uri_template: String) -> Self {
-        let mut url_params: Vec<String> = Vec::new();
+        let mut uri_params: Vec<String> = Vec::new();
 
         let mut url_param = String::new();
         let mut is_url_param = false;
@@ -34,10 +36,10 @@ impl RouteAddress {
             if c == '{' {
                 is_url_param = true;
             } else if c == '}' {
-                url_params.push(url_param);
+                uri_params.push(url_param);
                 url_param = String::new();
                 is_url_param = false;
-                regex_template += "(.*)";
+                regex_template += "([^/]+)";
             } else if is_url_param {
                 url_param.push(c);
             } else {
@@ -46,21 +48,34 @@ impl RouteAddress {
         }
         regex_template.push('$');
 
-        let regex_escaped: String = regex::escape(&uri_template);
-        let uri_regex = Regex::new(format!(r"{}", &regex_escaped).as_str()).unwrap();
-        println!("{}", uri_regex);
+        let uri_regex = Regex::new(format!(r"{}", &regex_template).as_str()).unwrap();
 
         RouteAddress {
             uri_template,
             uri_regex,
+            uri_params,
         }
     }
 
     pub fn is_match(&self, uri: &String) -> bool {
-        println!("{}", uri);
-        println!("{}", self.uri_regex);
-        println!("{}", self.uri_regex.is_match(uri));
         self.uri_regex.is_match(uri)
+    }
+
+    pub fn extract_uri_params(&self, uri: &String) -> Result<HashMap<String, String>, ParseError> {
+        let cap_groups = match self.uri_regex.captures(uri) {
+            Some(cg) => cg,
+            None => return Err(ParseError::Uri),
+        };
+        let mut uri_params_extracted: HashMap<String, String> = HashMap::new();
+        for (i, uri_param) in self.uri_params.iter().enumerate() {
+            let uri_param_value = match cap_groups.get(i + 1) {
+                Some(v) => v,
+                None => return Err(ParseError::Uri),
+            };
+            uri_params_extracted.insert(uri_param.clone(), uri_param_value.as_str().to_string());
+        }
+
+        Ok(uri_params_extracted)
     }
 }
 
@@ -95,16 +110,24 @@ impl HttpServer {
 
         debug!(&request);
 
-        let found_route = self.routes.iter().find(|&r| r.uri.is_match(&request.target) && r.method == request.method);
+        let mut found_routes = self.routes.iter().filter(|r| r.uri.is_match(&request.target)).peekable();
+        if found_routes.peek().is_none() {
+            stream.write_all(HttpResponse::new(StatusCode::NOT_FOUND).build().as_bytes()).unwrap();
+            return;
+        }
+
+        let found_route = found_routes.find(|r| r.method == request.method);
 
         if let Some(route) = found_route {
+            debug!(route.uri.extract_uri_params(&request.target));
+            // debug!(route.uri.extract_uri_params(&request.target).unwrap());
             let handler_cloned = route.handler.clone();
             self.worker_pool.execute(move || {
                 let response = handler_cloned.respond(request);
                 stream.write_all(&response.build().as_bytes()).unwrap()
             });
         } else {
-            stream.write_all(HttpResponse::new(StatusCode::NOT_FOUND).build().as_bytes()).unwrap();
+            stream.write_all(HttpResponse::new(StatusCode::METHOD_NOT_ALLOWED).build().as_bytes()).unwrap();
         }
     }
 }
