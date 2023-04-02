@@ -1,5 +1,5 @@
 use super::{
-    server::HttpServer, service::{RouteHandler, Route}, workpool::WorkerPool,
+    server::HttpServer, service::Route, workpool::WorkerPool,
 };
 use std::net;
 

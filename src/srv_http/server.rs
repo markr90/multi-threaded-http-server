@@ -2,6 +2,8 @@ use std::io::Write;
 use std::net;
 use http::StatusCode;
 
+use crate::debug;
+
 use super::request::read_http_request;
 use super::response::HttpResponse;
 use super::service::Route;
@@ -29,11 +31,15 @@ impl HttpServer {
     fn handle_connection(&self, mut stream: net::TcpStream) -> () {
         let request = match read_http_request(&mut stream) {
             Ok(r) => r,
-            Err(_) => {
+            Err(err) => {
+                println!("{}", err);
                 stream.write_all(HttpResponse::new(StatusCode::BAD_REQUEST).build().as_bytes()).unwrap();
                 return
             }
         };
+
+        debug!("Received request");
+        debug!(&request);
 
         let found_route = self.routes.iter().find(|&r| r.uri == request.target && r.method == request.method);
 

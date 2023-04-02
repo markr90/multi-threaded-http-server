@@ -1,15 +1,38 @@
-use std::{thread, time, sync::Arc};
-
-use http::StatusCode;
+use std::sync::Arc;
+use serde::de::DeserializeOwned;
 
 use super::{
-    request::{HttpRequest, HttpMethod},
-    response::HttpResponse
+    request::HttpRequest,
+    response::HttpResponse, http_constants::HttpMethod
 };
 
 pub trait RouteHandler: Sync + Send {
     fn respond(&self, request: HttpRequest) -> HttpResponse;
 }
+
+#[derive(Debug)]
+pub enum ServerError {
+    Fail,
+}
+
+// pub trait JsonRouteHandler<T: Deserialize<'static>, V: Serialize>: RouteHandler {
+pub trait JsonRouteHandler: RouteHandler {
+    type RequestObject: DeserializeOwned;
+    fn process(&self, body: Self::RequestObject) -> HttpResponse;
+}
+
+impl<'a, R> RouteHandler for R
+where
+    R: JsonRouteHandler
+{
+    fn respond(&self, request: HttpRequest) -> HttpResponse {
+        // Implement the `respond` method for `RouteHandler` here
+        // add error handling
+        let obj: R::RequestObject = serde_json::from_str(&request.body).unwrap();
+        self.process(obj)
+    }
+}
+
 
 pub struct Route<'a> {
     pub uri: String,
@@ -51,20 +74,5 @@ impl<'a> HttpService<'a> {
 
     pub fn add_route<T>(&mut self, route: Route<'a>) -> () {
         self.routes.push(route);
-    }
-}
-
-pub struct HomeHandler;
-impl RouteHandler for HomeHandler {
-    fn respond(&self, _: HttpRequest) -> HttpResponse {
-        HttpResponse::new(StatusCode::OK)
-    }
-}
-
-pub struct SleepHandler;
-impl RouteHandler for SleepHandler {
-    fn respond(&self, _: HttpRequest) -> HttpResponse {
-        thread::sleep(time::Duration::from_secs(5));
-        HttpResponse::new(StatusCode::OK)
     }
 }
