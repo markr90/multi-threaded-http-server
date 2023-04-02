@@ -1,5 +1,5 @@
 use core::fmt;
-use std::io;
+use std::{io, collections::HashMap};
 use std::io::prelude::*;
 use std::net;
 
@@ -37,6 +37,7 @@ pub struct HttpRequest {
     pub version: HttpVersion,
     pub headers: Vec<(String, String)>,
     pub body: String,
+    pub query_params: HashMap<String, String>,
 }
 
 impl fmt::Display for HttpRequest {
@@ -68,6 +69,17 @@ fn parse_http_version(version: &str) -> Result<HttpVersion, ParseError> {
     }
 }
 
+const INVALID_URI_CHARS: [&str; 11] = ["\"", "<", ">", "[", "]", "\\", "^", "`", "{", "|", "}"];
+
+fn is_valid_uri(uri: &str) -> bool {
+    let mut is_valid = true;
+    for c in INVALID_URI_CHARS {
+        is_valid &= !uri.contains(c);
+    }
+
+    is_valid
+}
+
 pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, ParseError> {
     let mut buf_reader = io::BufReader::new(stream);
 
@@ -77,7 +89,29 @@ pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, Par
     let mut request_line_parts = request_line.split_whitespace();
     let method = request_line_parts.next().ok_or(ParseError::Method)?;
     let path = request_line_parts.next().ok_or(ParseError::Uri)?;
+
+    if !is_valid_uri(path) {
+        return Err(ParseError::Uri);
+    }
+
     let version = request_line_parts.next().ok_or(ParseError::Version)?;
+
+    let mut uri_parts = path.split("?");
+    let target = uri_parts.next().ok_or(ParseError::Uri)?;
+    let query_param_part = uri_parts.next();
+
+    let mut query_params: HashMap<String, String> = HashMap::new();
+    if let Some(qp) = query_param_part {
+        for q in qp.split("&") {
+            let mut qsplit = q.split("=");
+            let qp_name = qsplit.next().ok_or(ParseError::Uri)?;
+            let qp_value = match qsplit.next() {
+                Some(v) => v,
+                None => "",
+            };
+            query_params.insert(qp_name.to_string(), qp_value.to_string());
+        }
+    }
 
     // read headers
     let mut headers: Vec<(String, String)> = Vec::new();
@@ -112,103 +146,12 @@ pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, Par
 
     let request = HttpRequest {
         method: parse_http_method(method)?,
-        target: String::from(path),
+        target: String::from(target),
         version: parse_http_version(version)?,
-        headers: headers,
-        body: String::from_utf8(body).map_err(|_| ParseError::Body)?
+        headers,
+        body: String::from_utf8(body).map_err(|_| ParseError::Body)?,
+        query_params,
     };
 
     Ok(request)
 }
-
-// fn read_request_chunks(stream: &mut net::TcpStream, delimiter: u8) -> io::Result<Vec<u8>> {
-//     let mut buffer = vec![0u8; 1024];
-//     let mut bytes = Vec::new();
-//     loop {
-//         let n = stream.read(&mut buffer)?;
-//         if n == 0 {
-//             break; // end of stream
-//         }
-//         bytes.extend_from_slice(&buffer[..n]);
-//         if bytes.ends_with(&[delimiter]) {
-//             break; // end of request
-//         }
-//     }
-//     Ok(bytes)
-// }
-
-// fn read_until_newline(stream: &mut net::TcpStream) -> Vec<u8> {
-//     let mut reader = io::BufReader::new(stream);
-//     let mut buf = [0u8; 1024];
-//     loop {
-//         let num_bytes = reader.read_until(b'\n', &mut buf).unwrap();
-//         if num_bytes == 0 {
-//             break;
-//         }
-//         if buf[num_bytes - 1] == b'\n' {
-//             buf.truncate(num_bytes);
-//             break;
-//         }
-//     }
-//     buf
-// }
-
-
-// optimize later
-// pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, ParseError> {
-//     let mut buffer = [0; 1024];
-//     // Read the stream into the buffer
-//     let bytes_read = stream.read(&mut buffer).map_err(|_| ParseError::IO)?;
-
-//     // Parse the request
-//     let request_str = String::from_utf8(buffer[..bytes_read].to_vec()).map_err(|_| ParseError::IO)?;
-
-//     println!("{:#?}", request_str);
-
-//     // Extract the request line
-//     let mut lines = request_str.lines();
-//     let request_line = lines.next().ok_or(ParseError::RequestLine)?;
-//     let mut request_parts = request_line.split_whitespace();
-//     let method = request_parts.next().ok_or(ParseError::Method)?;
-//     let path = request_parts.next().ok_or(ParseError::Uri)?;
-//     let version = request_parts.next().ok_or(ParseError::Version)?;
-
-//     // read headers
-//     let mut headers: Vec<(String, String)> = Vec::new();
-//     let mut content_length: usize = 0;
-//     for line in lines {
-//         if line.is_empty() {
-//             break;
-//         }
-
-//         let mut header_parts = line.splitn(2, ": ");
-//         let header_name = String::from(header_parts.next().ok_or(ParseError::Headers)?);
-//         let header_value = String::from(header_parts.next().ok_or(ParseError::Headers)?);
-
-//         if header_name == "Content-Length" {
-//             if let Ok(len) = header_value.parse::<usize>() {
-//                 content_length = len;
-//             }
-//         }
-
-//         headers.push((header_name, header_value));
-//     }
-
-//     // read_body
-
-//     let mut body = vec![0; content_length];
-//     if content_length > 0 {
-//         println!("{:#?}", content_length);
-//         stream.read_exact(&mut body).map_err(|_| ParseError::Body)?;
-//         println!("here2");
-//     }
-
-//     let request = HttpRequest {
-//         method: parse_http_method(method)?,
-//         target: String::from(path),
-//         version: parse_http_version(version)?,
-//         body: String::from_utf8(body).map_err(|_| ParseError::Body)?
-//     };
-
-//     Ok(request)
-// }
