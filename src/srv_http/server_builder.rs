@@ -1,11 +1,11 @@
 use super::{
-    server::HttpServer, service::Route, workpool::WorkerPool,
+    server::{HttpServer, RouteAddress, RegexRoute}, service::Route, workpool::WorkerPool,
 };
 use std::net;
 
 pub struct HttpServerBuilder {
     bindings: Vec<net::SocketAddr>,
-    routes: Vec<Route<'static>>,
+    routes: Vec<RegexRoute>,
     worker_pool_limit: usize,
 }
 
@@ -41,7 +41,12 @@ impl HttpServerBuilder {
     }
 
     pub fn add_route(mut self, route: Route<'static>) -> Self {
-        self.routes.push(route);
+        let regex_route = RegexRoute {
+            uri: RouteAddress::new(route.uri),
+            method: route.method,
+            handler: route.handler,
+        };
+        self.routes.push(regex_route);
         self
     }
 

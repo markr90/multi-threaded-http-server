@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use serde::de::DeserializeOwned;
 
 use super::{
     request::HttpRequest,
@@ -14,25 +13,6 @@ pub trait RouteHandler: Sync + Send {
 pub enum ServerError {
     Fail,
 }
-
-// pub trait JsonRouteHandler<T: Deserialize<'static>, V: Serialize>: RouteHandler {
-pub trait JsonRouteHandler: RouteHandler {
-    type RequestObject: DeserializeOwned;
-    fn process(&self, body: Self::RequestObject) -> HttpResponse;
-}
-
-impl<'a, R> RouteHandler for R
-where
-    R: JsonRouteHandler
-{
-    fn respond(&self, request: HttpRequest) -> HttpResponse {
-        // Implement the `respond` method for `RouteHandler` here
-        // add error handling
-        let obj: R::RequestObject = serde_json::from_str(&request.body).unwrap();
-        self.process(obj)
-    }
-}
-
 
 pub struct Route<'a> {
     pub uri: String,

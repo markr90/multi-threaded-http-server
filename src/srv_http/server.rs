@@ -1,18 +1,73 @@
 use std::io::Write;
 use std::net;
+use std::sync::Arc;
 use http::StatusCode;
+use regex::Regex;
 
 use crate::debug;
 
+use super::http_constants::HttpMethod;
 use super::request::read_http_request;
 use super::response::HttpResponse;
-use super::service::Route;
+use super::service::{Route, RouteHandler};
 use super::workpool::WorkerPool;
 
 pub struct HttpServer {
     pub listeners: Vec<net::TcpListener>,
-    pub routes: Vec<Route<'static>>,
+    pub routes: Vec<RegexRoute>,
     pub worker_pool: WorkerPool,
+}
+
+pub struct RouteAddress {
+    pub uri_template: String,
+    pub uri_regex: regex::Regex,
+}
+
+impl RouteAddress {
+    pub fn new(uri_template: String) -> Self {
+        let mut url_params: Vec<String> = Vec::new();
+
+        let mut url_param = String::new();
+        let mut is_url_param = false;
+        let mut regex_template = String::new();
+        for c in uri_template.chars() {
+            if c == '{' {
+                is_url_param = true;
+            } else if c == '}' {
+                url_params.push(url_param);
+                url_param = String::new();
+                is_url_param = false;
+                regex_template += "(.*)";
+            } else if is_url_param {
+                url_param.push(c);
+            } else {
+                regex_template.push(c);
+            }
+        }
+        regex_template.push('$');
+
+        let regex_escaped: String = regex::escape(&uri_template);
+        let uri_regex = Regex::new(format!(r"{}", &regex_escaped).as_str()).unwrap();
+        println!("{}", uri_regex);
+
+        RouteAddress {
+            uri_template,
+            uri_regex,
+        }
+    }
+
+    pub fn is_match(&self, uri: &String) -> bool {
+        println!("{}", uri);
+        println!("{}", self.uri_regex);
+        println!("{}", self.uri_regex.is_match(uri));
+        self.uri_regex.is_match(uri)
+    }
+}
+
+pub struct RegexRoute {
+    pub uri: RouteAddress,
+    pub method: HttpMethod,
+    pub handler: Arc<Box<dyn RouteHandler>>,
 }
 
 impl HttpServer {
@@ -38,10 +93,9 @@ impl HttpServer {
             }
         };
 
-        debug!("Received request");
         debug!(&request);
 
-        let found_route = self.routes.iter().find(|&r| r.uri == request.target && r.method == request.method);
+        let found_route = self.routes.iter().find(|&r| r.uri.is_match(&request.target) && r.method == request.method);
 
         if let Some(route) = found_route {
             let handler_cloned = route.handler.clone();

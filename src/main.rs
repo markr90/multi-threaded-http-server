@@ -13,7 +13,7 @@ fn main() {
         .bind("127.0.0.1:3001")
         .add_route(Route::new("/", HttpMethod::GET, HomeHandler))
         .add_route(Route::new("/sleep", HttpMethod::GET, SleepHandler))
-        .add_route(Route::new("/animal", HttpMethod::GET, JsonResponder))
+        .add_route(Route::new("/animal/{id}", HttpMethod::GET, JsonResponder))
         .build();
     server.run();
 }

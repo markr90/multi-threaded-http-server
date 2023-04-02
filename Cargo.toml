@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 concat-string = "1.0.1"
 http = "0.2.9"
+regex = "1.7.3"
 serde = { version = "1.0.159", features = ["derive"] }
 # serde = "1.0.159"
 serde_json = "1.0.95"
