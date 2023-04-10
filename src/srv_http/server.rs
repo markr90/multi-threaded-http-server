@@ -25,6 +25,10 @@ pub struct RouteAddress {
     pub uri_params: Vec<String>,
 }
 
+// idea is to check uri regex to extract parameters
+// I still need a good way to pass the extracted parameter values from a url like /user/{id} to the
+// http service, should I pass them in the function? I can also add them to the HTTP Request
+// object?
 impl RouteAddress {
     pub fn new(uri_template: String) -> Self {
         let mut uri_params: Vec<String> = Vec::new();
