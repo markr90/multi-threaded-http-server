@@ -96,6 +96,7 @@ pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, Par
 
     let version = request_line_parts.next().ok_or(ParseError::Version)?;
 
+    // parse uri and query parameters
     let mut uri_parts = path.split("?");
     let target = uri_parts.next().ok_or(ParseError::Uri)?;
     let query_param_part = uri_parts.next();
