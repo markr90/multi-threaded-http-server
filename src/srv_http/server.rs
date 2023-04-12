@@ -10,7 +10,7 @@ use crate::debug;
 use super::http_constants::HttpMethod;
 use super::request::{read_http_request, ParseError};
 use super::response::HttpResponse;
-use super::service::{Route, RouteHandler};
+use super::service::RouteHandler;
 use super::workpool::WorkerPool;
 
 pub struct HttpServer {
@@ -25,7 +25,6 @@ pub struct RouteAddress {
     pub uri_params: Vec<String>,
 }
 
-// idea is to check uri regex to extract parameters
 // I still need a good way to pass the extracted parameter values from a url like /user/{id} to the
 // http service, should I pass them in the function? I can also add them to the HTTP Request
 // object?
@@ -123,8 +122,6 @@ impl HttpServer {
         let found_route = found_routes.find(|r| r.method == request.method);
 
         if let Some(route) = found_route {
-            debug!(route.uri.extract_uri_params(&request.target));
-            // debug!(route.uri.extract_uri_params(&request.target).unwrap());
             let handler_cloned = route.handler.clone();
             self.worker_pool.execute(move || {
                 let response = handler_cloned.respond(request);

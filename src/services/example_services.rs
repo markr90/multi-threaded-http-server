@@ -28,9 +28,9 @@ pub struct AnimalResponse {
     name: String,
 }
 
-pub struct JsonResponder;
+pub struct AnimalResponder;
 
-impl RouteHandler for JsonResponder {
+impl RouteHandler for AnimalResponder {
     fn respond(&self, request: HttpRequest) -> HttpResponse {
         let request = serde_json::from_str(&request.body);
         let request: AnimalRequest = match request {
