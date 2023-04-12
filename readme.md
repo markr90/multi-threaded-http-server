@@ -30,6 +30,16 @@ pub struct HttpRequest {
 
 In src/services/example_services.rs you will find examples of some simple HTTP services and how to use the RouteHandler trait to create HTTP service. In src/main.rs you can see an example of how the services are registed to the server builder. By default the HttpServerBuilder has 16 threads. You can increase this with worker_pool_limit method.
 
+To register a service in short you need to
+
+1. Create a struct that implements the RouteHandler trait
+2. Register the service to the HttpServerBuilder with a route and HttpMethod
+
+For example code please see
+
+- src/main.rs
+- src/services/example_services.rs
+
 ## TODO
 
 - Route parameters (currently WIP): support registering routes like /user/{id} for example
