@@ -15,7 +15,7 @@ use super::workpool::WorkerPool;
 
 pub struct HttpServer {
     pub listeners: Vec<net::TcpListener>,
-    pub routes: Vec<RegexRoute>,
+    pub routes: Arc<Vec<RegexRoute>>,
     pub worker_pool: WorkerPool,
 }
 
@@ -102,33 +102,34 @@ impl HttpServer {
     }
 
     fn handle_connection(&self, mut stream: net::TcpStream) -> () {
-        let request = match read_http_request(&mut stream) {
-            Ok(r) => r,
-            Err(err) => {
-                println!("{}", err);
-                stream.write_all(HttpResponse::new(StatusCode::BAD_REQUEST).build().as_bytes()).unwrap();
-                return
+        let routes_clone = self.routes.clone();
+        self.worker_pool.execute(move || {
+            let request = match read_http_request(&mut stream) {
+                Ok(r) => r,
+                Err(err) => {
+                    println!("{}", err);
+                    stream.write_all(HttpResponse::new(StatusCode::BAD_REQUEST).build().as_bytes()).unwrap();
+                    return
+                }
+            };
+
+            debug!(&request);
+
+
+            let mut found_routes = routes_clone.iter().filter(|r| r.uri.is_match(&request.target)).peekable();
+            if found_routes.peek().is_none() {
+                stream.write_all(HttpResponse::new(StatusCode::NOT_FOUND).build().as_bytes()).unwrap();
+                return;
             }
-        };
 
-        debug!(&request);
+            let found_route = found_routes.find(|r| r.method == request.method);
 
-        let mut found_routes = self.routes.iter().filter(|r| r.uri.is_match(&request.target)).peekable();
-        if found_routes.peek().is_none() {
-            stream.write_all(HttpResponse::new(StatusCode::NOT_FOUND).build().as_bytes()).unwrap();
-            return;
-        }
-
-        let found_route = found_routes.find(|r| r.method == request.method);
-
-        if let Some(route) = found_route {
-            let handler_cloned = route.handler.clone();
-            self.worker_pool.execute(move || {
-                let response = handler_cloned.respond(request);
+            if let Some(route) = found_route {
+                let response = route.handler.respond(request);
                 stream.write_all(&response.build().as_bytes()).unwrap()
-            });
-        } else {
-            stream.write_all(HttpResponse::new(StatusCode::METHOD_NOT_ALLOWED).build().as_bytes()).unwrap();
-        }
+            } else {
+                stream.write_all(HttpResponse::new(StatusCode::METHOD_NOT_ALLOWED).build().as_bytes()).unwrap();
+            }
+        });
     }
 }

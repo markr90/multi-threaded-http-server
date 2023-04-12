@@ -1,7 +1,7 @@
 use super::{
     server::{HttpServer, RouteAddress, RegexRoute}, service::Route, workpool::WorkerPool,
 };
-use std::net;
+use std::{net, sync::Arc};
 
 pub struct HttpServerBuilder {
     bindings: Vec<net::SocketAddr>,
@@ -58,7 +58,7 @@ impl HttpServerBuilder {
 
         HttpServer {
             listeners,
-            routes: self.routes,
+            routes: Arc::new(self.routes),
             worker_pool: WorkerPool::new(self.worker_pool_limit),
         }
     }
