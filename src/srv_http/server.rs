@@ -116,7 +116,7 @@ impl HttpServer {
             debug!(&request);
 
 
-            let mut found_routes = routes_clone.iter().filter(|r| r.uri.is_match(&request.target)).peekable();
+            let mut found_routes = routes_clone.iter().filter(|r| r.uri.is_match(&request.uri)).peekable();
             if found_routes.peek().is_none() {
                 stream.write_all(HttpResponse::new(StatusCode::NOT_FOUND).build().as_bytes()).unwrap();
                 return;

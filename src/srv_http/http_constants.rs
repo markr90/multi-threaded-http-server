@@ -21,6 +21,7 @@ impl fmt::Display for HttpMethod {
 }
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub enum HttpVersion {
     Http10,
     Http11,

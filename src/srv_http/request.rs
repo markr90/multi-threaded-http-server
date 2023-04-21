@@ -1,7 +1,8 @@
 use core::fmt;
-use std::{io, collections::HashMap};
+use std::io;
 use std::io::prelude::*;
-use std::net;
+
+use crate::debug;
 
 use super::http_constants::{HttpMethod, HttpVersion};
 
@@ -33,16 +34,16 @@ impl fmt::Display for ParseError {
 #[derive(Debug)]
 pub struct HttpRequest {
     pub method: HttpMethod,
-    pub target: String,
+    pub uri: String,
     pub version: HttpVersion,
     pub headers: Vec<(String, String)>,
     pub body: String,
-    pub query_params: HashMap<String, String>,
+    pub query_params: Vec<(String, String)>,
 }
 
 impl fmt::Display for HttpRequest {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {} {}\r\n", &self.method.to_string(), &self.target.to_string(), &self.version.to_string())?;
+        write!(f, "{} {} {}\r\n", &self.method.to_string(), &self.uri.to_string(), &self.version.to_string())?;
         for header in &self.headers {
             write!(f, "{}: {}\r\n", header.0, header.1)?;
         }
@@ -52,6 +53,7 @@ impl fmt::Display for HttpRequest {
 
 
 fn parse_http_method(method: &str) -> Result<HttpMethod, ParseError> {
+    debug!(method);
     match method {
         "GET" => Ok(HttpMethod::GET),
         "POST" => Ok(HttpMethod::POST),
@@ -80,12 +82,14 @@ fn is_valid_uri(uri: &str) -> bool {
     is_valid
 }
 
-pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, ParseError> {
+pub fn read_http_request<T>(stream: &mut T) -> Result<HttpRequest, ParseError>
+where T: std::io::Read {
     let mut buf_reader = io::BufReader::new(stream);
 
     let mut request_line = String::new();
     buf_reader.read_line(&mut request_line).map_err(|_| ParseError::RequestLine)?;
 
+    debug!(&request_line);
     let mut request_line_parts = request_line.split_whitespace();
     let method = request_line_parts.next().ok_or(ParseError::Method)?;
     let path = request_line_parts.next().ok_or(ParseError::Uri)?;
@@ -101,7 +105,7 @@ pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, Par
     let target = uri_parts.next().ok_or(ParseError::Uri)?;
     let query_param_part = uri_parts.next();
 
-    let mut query_params: HashMap<String, String> = HashMap::new();
+    let mut query_params: Vec<(String, String)> =  Vec::new();
     if let Some(qp) = query_param_part {
         for q in qp.split("&") {
             let mut qsplit = q.split("=");
@@ -110,7 +114,7 @@ pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, Par
                 Some(v) => v,
                 None => "",
             };
-            query_params.insert(qp_name.to_string(), qp_value.to_string());
+            query_params.push((qp_name.to_string(), qp_value.to_string()));
         }
     }
 
@@ -147,7 +151,7 @@ pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, Par
 
     let request = HttpRequest {
         method: parse_http_method(method)?,
-        target: String::from(target),
+        uri: String::from(target),
         version: parse_http_version(version)?,
         headers,
         body: String::from_utf8(body).map_err(|_| ParseError::Body)?,
@@ -156,3 +160,59 @@ pub fn read_http_request(stream: &mut net::TcpStream) -> Result<HttpRequest, Par
 
     Ok(request)
 }
+
+#[allow(dead_code)]
+const TEST_REQUEST: &str = "GET /request?qp1=1&qp2=2 HTTP/1.1\r\n\
+header1: header1\r\n\
+header2: header2\r\n\
+Content-Length: 22\r\n\
+\r\n\
+<body>some_body</body>\r\n\
+\r\n\r\n
+";
+
+#[test]
+fn parses_method() {
+    let http_request = read_http_request(&mut TEST_REQUEST.as_bytes()).unwrap();
+    assert_eq!(http_request.method, HttpMethod::GET);
+}
+
+#[test]
+fn parses_uri() {
+    let http_request = read_http_request(&mut TEST_REQUEST.as_bytes()).unwrap();
+    assert_eq!(http_request.uri, "/request");
+}
+
+#[test]
+fn parses_query_params() {
+    let http_request = read_http_request(&mut TEST_REQUEST.as_bytes()).unwrap();
+    let mut query_params = http_request.query_params.iter();
+    let first_qp = query_params.next().unwrap();
+    let second_qp = query_params.next().unwrap();
+    assert_eq!(first_qp, &("qp1".to_string(), "1".to_string()));
+    assert_eq!(second_qp, &("qp2".to_string(), "2".to_string()));
+}
+
+#[test]
+fn parses_version() {
+    let http_request = read_http_request(&mut TEST_REQUEST.as_bytes()).unwrap();
+    assert_eq!(http_request.version, HttpVersion::Http11);
+}
+
+#[test]
+fn parses_headers() {
+    let http_request = read_http_request(&mut TEST_REQUEST.as_bytes()).unwrap();
+    let mut headers = http_request.headers.iter();
+    let first_header = headers.next().unwrap();
+    let second_header = headers.next().unwrap();
+    assert_eq!(first_header, &("header1".to_string(), "header1".to_string()));
+    assert_eq!(second_header, &("header2".to_string(), "header2".to_string()));
+}
+
+#[test]
+fn parses_body() {
+    let http_request = read_http_request(&mut TEST_REQUEST.as_bytes()).unwrap();
+    let expected = "<body>some_body</body>";
+    assert_eq!(http_request.body, expected);
+}
+
